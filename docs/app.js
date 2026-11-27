@@ -21,7 +21,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* 저
 let members = [], staffIdx = [], memberById = {}, validKeys = {}, meta = {}, changes = [];
 let mode = lsGet(LS_MODE) === 'team' ? 'team' : 'personal';
 let query = '', party = '', lastQuery = '', chgOnly = false;
-let sb = null, me = null, authOpen = false, authMsg = '', inited = false;
+let sb = null, me = null, authOpen = false, authMsg = '', inited = false, lastEmail = '';
 let myMarks = new Set(), myMemos = {}, othersMarks = [], profiles = {}, kmap = {};
 let pending = 0, queue = Promise.resolve();
 const memoTimers = {};
@@ -152,7 +152,7 @@ async function onSession(session) {
     me = { uid, email: (session.user && session.user.email) || '' };
     await loadRemote();
     if (!profiles[uid]) { authOpen = true; authMsg = '팀원에게 보일 이름을 정해 주세요.'; }
-    else if (authOpen && authMsg.indexOf('로그인') >= 0) { authOpen = false; authMsg = ''; }
+    else { authOpen = false; authMsg = ''; }
   }
   applyModeUi(); renderAuth(); updateMeta(); render(true);
 }
@@ -165,18 +165,45 @@ function renderAuth() {
   if (!authOpen) return;
   const msg = authMsg ? '<p class="authmsg" id="authmsg">' + esc(authMsg) + '</p>' : '';
   if (!me) {
-    panel.innerHTML = '<form id="loginForm"><label for="email">팀 이메일로 로그인</label>'
-      + '<input id="email" type="email" required placeholder="이메일 주소" autocomplete="email">'
-      + '<button class="btn primary" type="submit">로그인 링크 받기</button></form>'
-      + '<p class="hint" style="margin:0">메일로 온 링크를 누르면 로그인됩니다. 팀 관리자가 등록한 이메일만 사용할 수 있습니다.</p>' + msg;
+    panel.innerHTML = '<form id="loginForm"><label for="email">팀 계정으로 로그인</label>'
+      + '<input id="email" type="email" required placeholder="이메일 주소" autocomplete="username" value="' + esc(lastEmail) + '">'
+      + '<input id="password" type="password" required placeholder="비밀번호" autocomplete="current-password">'
+      + '<button class="btn primary" type="submit">로그인</button></form>'
+      + '<p class="hint" style="margin:0">팀 관리자에게 받은 이메일과 비밀번호를 입력하세요. 등록된 계정만 사용할 수 있습니다.</p>'
+      + '<p style="margin:0"><button class="btn" type="button" id="sendLink">비밀번호를 잊었다면: 메일 링크로 로그인 (예비)</button></p>' + msg;
   } else {
     panel.innerHTML = '<form id="nameForm"><label for="nameIn">팀원에게 보일 이름</label>'
       + '<input id="nameIn" type="text" maxlength="20" required value="' + esc(profiles[me.uid] || '') + '" placeholder="예: 홍길동">'
       + '<button class="btn primary" type="submit">저장</button>'
-      + '<button class="btn" type="button" id="logout">로그아웃</button></form>' + msg;
+      + '<button class="btn" type="button" id="logout">로그아웃</button></form>'
+      + '<form id="pwForm"><label for="newPw">비밀번호 바꾸기</label>'
+      + '<input id="newPw" type="password" minlength="8" required autocomplete="new-password" placeholder="새 비밀번호 (8자 이상)">'
+      + '<button class="btn" type="submit">변경</button></form>' + msg;
   }
 }
+async function signInPassword(email, password) {
+  lastEmail = email;
+  authMsg = '로그인하는 중입니다…'; renderAuth();
+  let res;
+  try { res = await sb.auth.signInWithPassword({ email, password }); }
+  catch (e) { res = { error: { message: (e && e.message) || 'Failed to fetch' } }; }
+  const error = res.error;
+  if (error) {
+    const net = error.name === 'AuthRetryableFetchError' || /fetch|network|load failed/i.test(error.message || '');
+    authMsg = net ? 'Supabase에 연결하지 못했습니다. 이메일·비밀번호 문제가 아니라 접속 문제입니다. docs/config.js의 SUPABASE_URL이 https://프로젝트이름.supabase.co 형태인지, Supabase 프로젝트가 일시 중지되지 않았는지 확인하세요. (' + error.message + ')'
+      : /invalid login|invalid credentials/i.test(error.message || '') ? '이메일 또는 비밀번호가 맞지 않습니다. 팀 관리자에게 등록된 이메일과 비밀번호를 확인하세요.'
+      : '로그인하지 못했습니다. (' + error.message + ')';
+    renderAuth(); return;
+  }
+  authMsg = ''; await onSession(res.data && res.data.session);
+}
+async function changePassword(pw) {
+  const { error } = await sb.auth.updateUser({ password: pw });
+  authMsg = error ? '비밀번호를 바꾸지 못했습니다. (' + error.message + ')' : '비밀번호를 바꿨습니다. 다음 로그인부터 새 비밀번호를 사용하세요.';
+  renderAuth();
+}
 async function signIn(email) {
+  lastEmail = email;
   authMsg = '링크를 보내는 중입니다…'; renderAuth();
   const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
   const net = error && (error.name === 'AuthRetryableFetchError' || /fetch|network|load failed/i.test(error.message || ''));
@@ -454,10 +481,16 @@ $('#mTeam').addEventListener('click', () => setMode('team'));
 $('#authBtn').addEventListener('click', () => { authOpen = !authOpen; if (!authOpen) authMsg = ''; renderAuth(); });
 $('#authpanel').addEventListener('submit', (e) => {
   e.preventDefault();
-  if (e.target.id === 'loginForm') signIn($('#email').value.trim());
+  if (e.target.id === 'loginForm') signInPassword($('#email').value.trim(), $('#password').value);
   else if (e.target.id === 'nameForm') saveName($('#nameIn').value.trim());
+  else if (e.target.id === 'pwForm') changePassword($('#newPw').value);
 });
 $('#authpanel').addEventListener('click', async (e) => {
+  if (e.target.id === 'sendLink') {
+    const email = $('#email').value.trim();
+    if (!email) { authMsg = '위의 이메일 칸에 이메일을 먼저 입력하세요.'; renderAuth(); return; }
+    signIn(email); return;
+  }
   if (e.target.id !== 'logout') return;
   await sb.auth.signOut(); authOpen = false; authMsg = ''; await onSession(null);
 });
