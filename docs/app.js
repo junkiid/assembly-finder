@@ -281,7 +281,7 @@ function memberRow(m, q) {
   const key = 'm:' + m.id, ks = knownStaffCount(m);
   const badges = knownBadge(key) + (ks ? '<span class="chip known">아는 보좌진 ' + ks + '명</span>' : '');
   return '<a class="row" href="#m-' + esc(m.id) + '"><div class="nm">' + hl(m.name, q) + '</div><div class="sub">'
-    + pty(m.party) + (m.district ? ' ' + hl(m.district, q) : '') + '</div>'
+    + pty(m.party) + (m.district ? ' ' + hl(m.district, q) : '') + (roomOf(m.office) ? (m.district ? ' · ' : ' ') + esc(roomOf(m.office)) : '') + '</div>'
     + (badges ? '<div class="badges">' + badges + '</div>' : '') + knowersLine(key) + memoLine(key) + '</a>';
 }
 function staffRow(e, q) {
@@ -290,6 +290,8 @@ function staffRow(e, q) {
     + knowersLine(e.key) + memoLine(e.key) + '</a>';
 }
 const byParty = (m) => !party || m.party === party;
+// '의원회관 341호' → '341호' (호수를 못 찾으면 사무실 정보를 그대로)
+const roomOf = (office) => { const m = String(office || '').match(/\d+\s*호/); return m ? m[0].replace(/\s+/g, '') : String(office || '').trim(); };
 const squash = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
 // 의원 이름 또는 선거구에 검색어가 들어 있으면 일치 (선거구는 띄어쓰기 무시: '강남갑'으로도 '서울 강남구갑'을 찾음)
 const matchMember = (m, q) => m.name.toLowerCase().indexOf(q.toLowerCase()) >= 0 || squash(m.district).indexOf(squash(q)) >= 0;
@@ -344,7 +346,7 @@ function renderMember(m, keep) {
     + (mine ? '<input class="memo" data-memo="' + esc(mk) + '" maxlength="200" placeholder="내 메모 (어디서 알게 됐는지, 연락 이력 등 · 나에게만 보임)" value="' + esc(myMemos[mk] || '') + '" aria-label="의원 메모">' : '') + '</div>'
     + teamKnow
     + '<dl class="facts"><div><dt>정당</dt><dd>' + (m.party ? pty(m.party) : '-') + '</dd></div>'
-    + fact('선거구', m.district) + fact('사무실', m.office) + fact('직책', m.role) + fact('고유코드', m.code) + '</dl>'
+    + fact('선거구', m.district) + fact('사무실', m.office) + fact('직책', m.role) + '</dl>'
     + '<section class="sec"><h4>소속 위원회 <span class="count">' + m.committees.length + '곳</span></h4>' + cm + '</section>'
     + sections
     + '<p class="hint">☆는 내가 아는 사람 표시입니다. 이름을 누르면 그 이름으로 전체 의원실을 검색합니다. 이름만으로는 같은 사람인지 구분할 수 없습니다.</p></article>';
@@ -435,6 +437,7 @@ function render(keep) {
   const h = location.hash.slice(1);
   let m = null;
   if (h.indexOf('m-') === 0) { const id = h.slice(2); m = memberById[id] || null; }
+  $('#chgLink').hidden = !!m; // 변동 안내는 첫 페이지에서만
   if (m) renderMember(m, keep === true);
   else {
     renderHome();
