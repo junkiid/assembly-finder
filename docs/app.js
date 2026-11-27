@@ -473,6 +473,14 @@ function render(keep) {
 }
 function toList() { if (location.hash) location.hash = ''; else render(); }
 
+// 제목을 누르면 어디서든 메인 화면으로 (검색어·필터도 처음 상태로)
+$('#homeLink').addEventListener('click', (e) => {
+  e.preventDefault();
+  query = ''; lastQuery = ''; party = '';
+  $('#q').value = ''; $('#party').value = ''; $('#onlyKnown').checked = false;
+  if (location.hash) location.hash = ''; else render();
+  window.scrollTo(0, 0);
+});
 $('#q').addEventListener('input', (e) => { query = e.target.value; lastQuery = query; toList(); });
 $('#party').addEventListener('change', (e) => { party = e.target.value; toList(); });
 $('#onlyKnown').addEventListener('change', () => toList());
