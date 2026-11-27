@@ -179,7 +179,11 @@ function renderAuth() {
 async function signIn(email) {
   authMsg = '링크를 보내는 중입니다…'; renderAuth();
   const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } });
-  authMsg = error ? '로그인 링크를 보내지 못했습니다. 팀 관리자가 등록한 이메일인지 확인하세요. (' + error.message + ')'
+  const net = error && (error.name === 'AuthRetryableFetchError' || /fetch|network|load failed/i.test(error.message || ''));
+  const notReg = error && /signups? not allowed|user not found/i.test(error.message || '');
+  authMsg = net ? 'Supabase에 연결하지 못했습니다. 이메일 문제가 아니라 접속 문제입니다. docs/config.js의 SUPABASE_URL이 https://프로젝트이름.supabase.co 형태인지, Supabase 프로젝트가 일시 중지되지 않았는지 확인하세요. (' + error.message + ')'
+    : notReg ? '로그인 링크를 보내지 못했습니다. 등록되지 않은 이메일입니다. 팀 관리자에게 Supabase의 Users에 추가해 달라고 요청하세요.'
+    : error ? '로그인 링크를 보내지 못했습니다. (' + error.message + ')'
     : '메일을 보냈습니다. 메일의 링크를 누르면 이 화면으로 돌아와 로그인됩니다. (로그인 후 이 메시지는 사라집니다)';
   renderAuth();
 }
@@ -277,7 +281,7 @@ function memberRow(m, q) {
   const key = 'm:' + m.id, ks = knownStaffCount(m);
   const badges = knownBadge(key) + (ks ? '<span class="chip known">아는 보좌진 ' + ks + '명</span>' : '');
   return '<a class="row" href="#m-' + esc(m.id) + '"><div class="nm">' + hl(m.name, q) + '</div><div class="sub">'
-    + pty(m.party) + (m.district ? ' ' + esc(m.district) : '') + '</div>'
+    + pty(m.party) + (m.district ? ' ' + hl(m.district, q) : '') + '</div>'
     + (badges ? '<div class="badges">' + badges + '</div>' : '') + knowersLine(key) + memoLine(key) + '</a>';
 }
 function staffRow(e, q) {
@@ -286,6 +290,9 @@ function staffRow(e, q) {
     + knowersLine(e.key) + memoLine(e.key) + '</a>';
 }
 const byParty = (m) => !party || m.party === party;
+const squash = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+// 의원 이름 또는 선거구에 검색어가 들어 있으면 일치 (선거구는 띄어쓰기 무시: '강남갑'으로도 '서울 강남구갑'을 찾음)
+const matchMember = (m, q) => m.name.toLowerCase().indexOf(q.toLowerCase()) >= 0 || squash(m.district).indexOf(squash(q)) >= 0;
 
 function renderHome() {
   const q = query.trim(), only = $('#onlyKnown').checked, low = q.toLowerCase();
@@ -293,7 +300,7 @@ function renderHome() {
   if (!members.length) {
     html = '<div class="empty-state">아직 명단 데이터가 없습니다. 저장소의 <b>Actions</b> 탭에서 "명단 갱신 및 배포"를 한 번 실행하면 채워집니다.</div>';
   } else {
-    const ms = members.filter((m) => byParty(m) && (!only || isKnown('m:' + m.id) || knownStaffCount(m) > 0) && (!q || m.name.toLowerCase().indexOf(low) >= 0))
+    const ms = members.filter((m) => byParty(m) && (!only || isKnown('m:' + m.id) || knownStaffCount(m) > 0) && (!q || matchMember(m, q)))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
     const st = (q || only) ? staffIdx.filter((e) => byParty(e.m) && (!only || isKnown(e.key)) && (!q || e.name.toLowerCase().indexOf(low) >= 0)) : [];
     const cap = 100, shown = st.slice(0, cap);
@@ -482,7 +489,11 @@ window.addEventListener('hashchange', () => render());
   applyModeUi(); render();
   if (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient) {
     try {
-      sb = window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY, { auth: { flowType: 'pkce', persistSession: true, detectSessionInUrl: true } });
+      const url = String(CFG.SUPABASE_URL).trim().replace(/\/(auth|rest)\/v1.*$/i, '').replace(/\/+$/, '');
+      if (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|com)$/i.test(url)) {
+        setStatus('config.js의 SUPABASE_URL 형식이 이상합니다. https://프로젝트이름.supabase.co 형태여야 합니다. (현재 값: ' + url + ')', true);
+      }
+      sb = window.supabase.createClient(url, String(CFG.SUPABASE_ANON_KEY).trim(), { auth: { flowType: 'pkce', persistSession: true, detectSessionInUrl: true } });
       await initAuth();
       if (lsGet(LS_MODE) === 'team' && me) setMode('team');
     } catch (e) { sb = null; setStatus('팀 기능에 연결하지 못했습니다: ' + e.message, true); }
