@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>의원·보좌진 찾기</title>
+<meta name="description" content="국회의원과 보좌진을 검색하고, 매일 바뀌는 인력 변동을 확인하는 팀용 도구">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@600;700&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap" id="app">
+  <header>
+    <div>
+      <h1>의원·보좌진 찾기</h1>
+      <p class="meta" id="meta"></p>
+      <p class="meta" id="updated"></p>
+    </div>
+    <div class="tools">
+      <a class="btn linkbtn" id="chgLink" href="#changes">변동 안내 ↓ <span class="dot" id="chgBadge" hidden></span></a>
+      <div class="seg" role="group" aria-label="보기 모드">
+        <button type="button" id="mPersonal" aria-pressed="true">개인</button>
+        <button type="button" id="mTeam" aria-pressed="false">팀</button>
+      </div>
+      <button class="btn" id="authBtn" type="button" hidden>로그인</button>
+    </div>
+  </header>
+
+  <div class="authpanel" id="authpanel" hidden></div>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="의원 이름 또는 보좌진 이름" autocomplete="off" aria-label="의원 또는 보좌진 이름 검색">
+    <select id="party" aria-label="정당 필터"><option value="">전체 정당</option></select>
+    <label class="chk"><input type="checkbox" id="onlyKnown"> <span id="onlyKnownLbl">내가 아는 사람만</span></label>
+  </div>
+
+  <div class="status" id="status" role="status"></div>
+  <div class="hint" id="netnote" style="margin-top:-8px"></div>
+
+  <main id="view"></main>
+
+  <footer class="hint" style="margin-top:28px">
+    자료 출처: <a href="https://open.assembly.go.kr" target="_blank" rel="noopener">열린국회정보</a> Open API 「국회의원 인적사항」 (국회사무처, 공공누리 출처표시).
+    보좌진은 이름만 제공되어 동명이인을 구분할 수 없습니다.
+  </footer>
+</div>
+
+<noscript>이 페이지는 JavaScript가 필요합니다.</noscript>
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

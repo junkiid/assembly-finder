@@ -1,0 +1,62 @@
+name: 명단 갱신 및 배포
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 매일 00:00 UTC = 한국 시간 오전 9시 (GitHub 사정으로 몇 분~수십 분 늦을 수 있음)
+  workflow_dispatch:       # Actions 탭에서 '수동 실행' 가능
+  push:
+    branches: [main]
+    paths: ["docs/**"]     # 화면 파일(설정 등)을 고치면 API 호출 없이 다시 배포만 함
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: members-pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # push로 시작된 실행에서는 국회 API를 호출하지 않는다
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 국회 API에서 명단 받아 어제와 비교
+        env:
+          ASSEMBLY_KEY: ${{ secrets.ASSEMBLY_KEY }}
+        run: python3 scripts/update_members.py
+
+      - name: 변경된 데이터 저장
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/data
+          if git diff --cached --quiet; then
+            echo "저장할 변경 없음"
+          else
+            git commit -m "명단 갱신 $(TZ=Asia/Seoul date +'%Y-%m-%d %H:%M')"
+            git push
+          fi
+
+  deploy:
+    needs: update
+    # update가 건너뛰어졌거나(push) 성공한 경우에만 배포. API 오류로 실패하면 배포하지 않아 이전 화면이 유지된다.
+    if: ${{ always() && (needs.update.result == 'success' || needs.update.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4
