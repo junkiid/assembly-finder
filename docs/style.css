@@ -125,6 +125,7 @@ mark{background:var(--hl);color:var(--hl-ink);border-radius:2px;padding:0 1px}
 .authpanel input[type=email],.authpanel input[type=text]{flex:1 1 220px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
 .authmsg{font-size:13.5px;color:var(--muted)}
 .linkbtn{display:inline-flex;gap:6px;align-items:center;text-decoration:none;color:inherit}
+.linkbtn[aria-expanded="true"]{border-color:var(--accent);background:var(--chip)}
 .dot{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--hl);color:var(--hl-ink);font-size:12px;text-align:center}
 
 .changes{margin-top:34px;padding-top:20px;border-top:1px solid var(--line)}
