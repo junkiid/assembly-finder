@@ -18,7 +18,7 @@
       <p class="meta" id="updated"></p>
     </div>
     <div class="tools">
-      <a class="btn linkbtn" id="chgLink" href="#changes">변동 안내 ↓ <span class="dot" id="chgBadge" hidden></span></a>
+      <button type="button" class="btn linkbtn" id="chgLink" aria-expanded="false" aria-controls="view">변동 안내 <span id="chgArrow" aria-hidden="true">▾</span> <span class="dot" id="chgBadge" hidden></span></button>
       <div class="seg" role="group" aria-label="보기 모드">
         <button type="button" id="mPersonal" aria-pressed="true">개인</button>
         <button type="button" id="mTeam" aria-pressed="false">팀</button>
@@ -32,6 +32,7 @@
   <div class="search">
     <input id="q" type="search" placeholder="의원·보좌진 이름 또는 선거구" autocomplete="off" aria-label="의원·보좌진 이름 또는 선거구 검색">
     <select id="party" aria-label="정당 필터"><option value="">전체 정당</option></select>
+    <select id="committee" aria-label="소속 위원회 필터"><option value="">전체 위원회</option></select>
     <label class="chk"><input type="checkbox" id="onlyKnown"> <span id="onlyKnownLbl">내가 아는 사람만</span></label>
   </div>
 
