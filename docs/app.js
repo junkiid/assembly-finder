@@ -20,7 +20,7 @@ const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* 저
 /* ---------- 상태 ---------- */
 let members = [], staffIdx = [], memberById = {}, validKeys = {}, meta = {}, changes = [];
 let mode = lsGet(LS_MODE) === 'team' ? 'team' : 'personal';
-let query = '', party = '', lastQuery = '', chgOnly = false;
+let query = '', party = '', committee = '', lastQuery = '', chgOnly = false, showChanges = false;
 let sb = null, me = null, authOpen = false, authMsg = '', inited = false, lastEmail = '';
 let myMarks = new Set(), myMemos = {}, othersMarks = [], profiles = {}, kmap = {};
 let pending = 0, queue = Promise.resolve();
@@ -254,6 +254,10 @@ function setMembers(list) {
   const sel = $('#party'), cur = party;
   sel.innerHTML = '<option value="">전체 정당</option>' + Object.keys(parties).sort((a, b) => a.localeCompare(b, 'ko')).map((p) => '<option>' + esc(p) + '</option>').join('');
   sel.value = parties[cur] ? cur : ''; party = sel.value;
+  const cms = {}; members.forEach((m) => m.committees.forEach((c) => { if (c) cms[c] = 1; }));
+  const csel = $('#committee'), ccur = committee;
+  csel.innerHTML = '<option value="">전체 위원회</option>' + Object.keys(cms).sort((a, b) => a.localeCompare(b, 'ko')).map((c) => '<option>' + esc(c) + '</option>').join('');
+  csel.value = cms[ccur] ? ccur : ''; committee = csel.value;
   validKeys = {}; members.forEach((m) => { validKeys['m:' + m.id] = 1; }); staffIdx.forEach((e) => { validKeys[e.key] = 1; });
   updateMeta();
 }
@@ -299,9 +303,9 @@ function hl(text, q) {
 }
 const knownBadge = (key) => (!isKnown(key) ? '' : mode === 'team'
   ? '<span class="chip known">★ 팀 ' + (kmap[key] || []).length + '명</span>'
-  : '<span class="chip known">★ 아는 사람</span>');
+  : '<span class="chip known">★ ' + (key.indexOf('m:') === 0 ? '아는 의원' : '아는 사람') + '</span>');
 const knownStaffCount = (m) => { let n = 0; ROLES.forEach((r) => m.staff[r].forEach((nm) => { if (isKnown('s:' + m.id + ':' + nm)) n++; })); return n; };
-const knowersLine = (key) => (mode === 'team' && isKnown(key) ? '<div class="sub">아는 사람: ' + esc(knowerNames(key).join(', ')) + '</div>' : '');
+const knowersLine = (key) => (mode === 'team' && isKnown(key) ? '<div class="sub">' + (key.indexOf('m:') === 0 ? '이 의원을 아는 팀원: ' : '아는 사람: ') + esc(knowerNames(key).join(', ')) + '</div>' : '');
 const memoLine = (key) => (myMarks.has(key) && myMemos[key] ? '<div class="sub memo-line">' + esc(myMemos[key]) + '</div>' : '');
 
 function memberRow(m, q) {
@@ -316,7 +320,7 @@ function staffRow(e, q) {
     + knownBadge(e.key) + '</div><div class="sub">' + esc(e.m.name) + ' 의원실' + (e.m.party ? ' · ' + pty(e.m.party) : '') + '</div>'
     + knowersLine(e.key) + memoLine(e.key) + '</a>';
 }
-const byParty = (m) => !party || m.party === party;
+const byParty = (m) => (!party || m.party === party) && (!committee || m.committees.indexOf(committee) >= 0);
 // '의원회관 341호' → '341호' (호수를 못 찾으면 사무실 정보를 그대로)
 const roomOf = (office) => { const m = String(office || '').match(/\d+\s*호/); return m ? m[0].replace(/\s+/g, '') : String(office || '').trim(); };
 const squash = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
@@ -344,7 +348,7 @@ function renderHome() {
       }
     }
   }
-  $('#view').innerHTML = html + changesHtml();
+  $('#view').innerHTML = html + (showChanges ? changesHtml() : '');
   watchChanges();
 }
 
@@ -369,14 +373,14 @@ function renderMember(m, keep) {
   const cm = m.committees.length ? '<div class="chips">' + m.committees.map((c) => '<span class="chip">' + esc(c) + '</span>').join('') + '</div>' : '<p class="empty">등록된 위원회가 없습니다.</p>';
   const teamKnow = mode === 'team' && isKnown(mk) ? '<p class="hint" style="margin:6px 0 0">이 의원을 아는 팀원: ' + esc(knowerNames(mk).join(', ')) + '</p>' : '';
   $('#view').innerHTML = '<a class="back" href="#">← 목록으로</a><article class="card"><h3>' + esc(m.name) + pty(m.party) + '</h3>'
-    + '<div class="kbar"><button type="button" class="kbtn" data-known="' + esc(mk) + '" aria-pressed="' + (mine ? 'true' : 'false') + '">' + (mine ? '★ 내가 아는 사람' : '☆ 아는 사람으로 표시') + '</button>'
+    + '<div class="kbar"><button type="button" class="kbtn" data-known="' + esc(mk) + '" aria-pressed="' + (mine ? 'true' : 'false') + '">' + (mine ? '★ 아는 의원' : '☆ 아는 의원으로 표시') + '</button>'
     + (mine ? '<input class="memo" data-memo="' + esc(mk) + '" maxlength="200" placeholder="내 메모 (어디서 알게 됐는지, 연락 이력 등 · 나에게만 보임)" value="' + esc(myMemos[mk] || '') + '" aria-label="의원 메모">' : '') + '</div>'
     + teamKnow
     + '<dl class="facts"><div><dt>정당</dt><dd>' + (m.party ? pty(m.party) : '-') + '</dd></div>'
     + fact('선거구', m.district) + fact('사무실', m.office) + fact('직책', m.role) + '</dl>'
     + '<section class="sec"><h4>소속 위원회 <span class="count">' + m.committees.length + '곳</span></h4>' + cm + '</section>'
     + sections
-    + '<p class="hint">☆는 내가 아는 사람 표시입니다. 이름을 누르면 그 이름으로 전체 의원실을 검색합니다. 이름만으로는 같은 사람인지 구분할 수 없습니다.</p></article>';
+    + '<p class="hint">☆는 내가 아는 의원·보좌진 표시입니다. 이름을 누르면 그 이름으로 전체 의원실을 검색합니다. 이름만으로는 같은 사람인지 구분할 수 없습니다.</p></article>';
   if (!keep) window.scrollTo(0, 0);
 }
 const fact = (k, v) => '<div><dt>' + k + '</dt><dd>' + (v ? esc(v) : '-') + '</dd></div>';
@@ -465,24 +469,31 @@ function render(keep) {
   let m = null;
   if (h.indexOf('m-') === 0) { const id = h.slice(2); m = memberById[id] || null; }
   $('#chgLink').hidden = !!m; // 변동 안내는 첫 페이지에서만
-  if (m) renderMember(m, keep === true);
-  else {
-    renderHome();
-    if (h === 'changes') { const el = document.getElementById('changes'); if (el) el.scrollIntoView(); }
-  }
+  if (m) renderMember(m, keep === true); else renderHome();
+  syncChgBtn();
+}
+function syncChgBtn() {
+  $('#chgLink').setAttribute('aria-expanded', showChanges ? 'true' : 'false');
+  $('#chgArrow').textContent = showChanges ? '▴' : '▾';
 }
 function toList() { if (location.hash) location.hash = ''; else render(); }
 
+// '변동 안내' 버튼: 누르면 인력 변동 안내가 나타나고, 다시 누르면 숨겨진다 (보고 싶을 때만 보기)
+$('#chgLink').addEventListener('click', () => {
+  showChanges = !showChanges; render(true);
+  if (showChanges) { const el = document.getElementById('changes'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+});
 // 제목을 누르면 어디서든 메인 화면으로 (검색어·필터도 처음 상태로)
 $('#homeLink').addEventListener('click', (e) => {
   e.preventDefault();
-  query = ''; lastQuery = ''; party = '';
-  $('#q').value = ''; $('#party').value = ''; $('#onlyKnown').checked = false;
+  query = ''; lastQuery = ''; party = ''; committee = ''; showChanges = false;
+  $('#q').value = ''; $('#party').value = ''; $('#committee').value = ''; $('#onlyKnown').checked = false;
   if (location.hash) location.hash = ''; else render();
   window.scrollTo(0, 0);
 });
 $('#q').addEventListener('input', (e) => { query = e.target.value; lastQuery = query; toList(); });
 $('#party').addEventListener('change', (e) => { party = e.target.value; toList(); });
+$('#committee').addEventListener('change', (e) => { committee = e.target.value; toList(); });
 $('#onlyKnown').addEventListener('change', () => toList());
 $('#mPersonal').addEventListener('click', () => setMode('personal'));
 $('#mTeam').addEventListener('click', () => setMode('team'));
