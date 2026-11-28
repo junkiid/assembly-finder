@@ -1,3 +1,45 @@
 {
- "entries": []
+ "entries": [
+  {
+   "date": "2026-11-28",
+   "events": [
+    {
+     "code": "XSP20229",
+     "from_role": "비서",
+     "name": "김성환",
+     "person": "최인아",
+     "to_role": "비서관",
+     "type": "staff_role_changed"
+    },
+    {
+     "from": {
+      "code": "6VC83722",
+      "name": "김현정",
+      "role": "비서"
+     },
+     "person": "김진석",
+     "to": {
+      "code": "N2P9317N",
+      "name": "이성윤",
+      "role": "비서"
+     },
+     "type": "staff_moved"
+    },
+    {
+     "code": "6I88973D",
+     "name": "부승찬",
+     "person": "박해규",
+     "role": "비서",
+     "type": "staff_added"
+    },
+    {
+     "code": "RPN2293B",
+     "name": "장경태",
+     "person": "배병현",
+     "role": "비서",
+     "type": "staff_removed"
+    }
+   ]
+  }
+ ]
 }
