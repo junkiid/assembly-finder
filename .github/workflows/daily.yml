@@ -2,7 +2,7 @@ name: 명단 갱신 및 배포
 
 on:
   schedule:
-    - cron: "0 0 * * *"   # 매일 00:00 UTC = 한국 시간 오전 9시 (GitHub 사정으로 몇 분~수십 분 늦을 수 있음)
+    - cron: "47 23 * * *"   # 매일 23:47 UTC = 한국 시간 08:47. 정각(00:00 UTC)은 GitHub가 몹시 붐벼 지연·누락이 잦아, 일부러 일찍 시작해 9시 전후에 끝나게 함
   workflow_dispatch:       # Actions 탭에서 '수동 실행' 가능
   push:
     branches: [main]
