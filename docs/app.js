@@ -10,6 +10,7 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const CFG = window.APP_CONFIG || {};
 const ROLES = ['보좌관', '비서관', '비서'];
+const ROLE_CLS = { '보좌관': 'r-aide', '비서관': 'r-sec', '비서': 'r-asst' };
 const PARTY_CLS = { '더불어민주당': 'pty-dp', '국민의힘': 'pty-ppp', '조국혁신당': 'pty-rk', '개혁신당': 'pty-rf' };
 const pty = (p) => (p ? '<span class="pty ' + (PARTY_CLS[p] || '') + '">' + esc(p) + '</span>' : '');
 const idOf = (code) => String(code || '').replace(/[^A-Za-z0-9]/g, '');
@@ -81,6 +82,40 @@ function setMemo(key, v) {
     if (r.error) throw r.error;
   }), 600);
 }
+/* ---------- 이동한 보좌진의 '아는 사람' 표시 따라가기 ---------- */
+// 변동 기록에 '의원실 A → 의원실 B 이동'이 있고, 내가 A의 그 사람을 표시해 두었으며,
+// 지금 A에는 없고 B에 있으면 표시(와 메모)를 B로 옮긴다. (이름만 같은 다른 사람일 가능성은 낮다고 보고 따라감)
+function planMoves(marks) {
+  const ops = [], taken = new Set();
+  if (!members.length || !changes.length) return ops;
+  const evs = [];
+  changes.slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)).forEach((d) => d.events.forEach((e) => { if (e.type === 'staff_moved' && e.from && e.to) evs.push(e); }));
+  const cur = new Set(marks);
+  evs.forEach((e) => {
+    const from = 's:' + idOf(e.from.code) + ':' + e.person, to = 's:' + idOf(e.to.code) + ':' + e.person;
+    if (!cur.has(from) || validKeys[from] || !validKeys[to]) return;
+    cur.delete(from); cur.add(to);
+    const prev = ops.find((o) => o.to === from);   // A→B 뒤 B→C 로 또 옮긴 경우 한 번에 처리
+    if (prev) prev.to = to; else ops.push({ from, to });
+  });
+  return ops.filter((o) => o.from !== o.to);
+}
+function applyMoves(ops, marks, memos) {
+  ops.forEach((o) => {
+    marks.delete(o.from); marks.add(o.to);
+    if (memos[o.from] && !memos[o.to]) memos[o.to] = memos[o.from];
+    delete memos[o.from];
+  });
+}
+async function persistMoves(ops, memos) {
+  const ins = ops.map((o) => ({ user_id: me.uid, key: o.to }));
+  let r = await sb.from('marks').insert(ins); if (r.error && r.error.code !== '23505') throw r.error;
+  const memoRows = ops.filter((o) => memos[o.from]).map((o) => ({ user_id: me.uid, key: o.to, memo: memos[o.from], updated_at: new Date().toISOString() }));
+  if (memoRows.length) { r = await sb.from('memos').upsert(memoRows); if (r.error) throw r.error; }
+  const olds = ops.map((o) => o.from);
+  r = await sb.from('marks').delete().eq('user_id', me.uid).in('key', olds); if (r.error) throw r.error;
+  r = await sb.from('memos').delete().eq('user_id', me.uid).in('key', olds); if (r.error) throw r.error;
+}
 const sig = () => JSON.stringify([[...myMarks].sort(), othersMarks.map((r) => r.user_id + '|' + r.key).sort(), profiles]);
 
 async function loadRemote() {
@@ -116,6 +151,11 @@ async function loadRemote() {
       // 옮겨 간 임시 표시는 지운다. 같은 브라우저로 다른 팀원이 로그인해도 이어받지 않도록.
       lsSet('af-marks-v2-local', JSON.stringify({ marks: [], memos: {} }));
     }
+  }
+  const ops = planMoves(mine);
+  if (ops.length) {
+    try { await persistMoves(ops, memos); applyMoves(ops, mine, memos); setStatus('이동한 보좌진 ' + ops.length + '명의 표시를 새 의원실로 옮겼습니다.'); }
+    catch (e) { /* 저장 실패 시 옮기지 않고 다음 갱신 때 다시 시도 */ }
   }
   myMarks = mine; myMemos = memos; othersMarks = others;
   rebuildKmap(); cacheWrite();
@@ -308,17 +348,22 @@ const knownStaffCount = (m) => { let n = 0; ROLES.forEach((r) => m.staff[r].forE
 const knowersLine = (key) => (mode === 'team' && isKnown(key) ? '<div class="sub">' + (key.indexOf('m:') === 0 ? '이 의원을 아는 팀원: ' : '아는 사람: ') + esc(knowerNames(key).join(', ')) + '</div>' : '');
 const memoLine = (key) => (myMarks.has(key) && myMemos[key] ? '<div class="sub memo-line">' + esc(myMemos[key]) + '</div>' : '');
 
+// 목록에서 바로 아는 사람 표시(☆/★)를 누르는 버튼. 내 표시 기준이며 팀 모드에서도 내 표시만 바뀐다.
+const rowStar = (key) => {
+  const my = myMarks.has(key), what = key.indexOf('m:') === 0 ? '아는 의원' : '아는 사람';
+  return '<button type="button" class="rowstar' + (my ? ' on' : '') + '" data-known="' + esc(key) + '" aria-pressed="' + (my ? 'true' : 'false') + '" aria-label="' + what + ' 표시" title="' + what + ' 표시">' + (my ? '★' : '☆') + '</button>';
+};
 function memberRow(m, q) {
   const key = 'm:' + m.id, ks = knownStaffCount(m);
   const badges = knownBadge(key) + (ks ? '<span class="chip known">아는 보좌진 ' + ks + '명</span>' : '');
-  return '<a class="row" href="#m-' + esc(m.id) + '"><div class="nm">' + hl(m.name, q) + '</div><div class="sub">'
+  return '<div class="rowwrap">' + rowStar(key) + '<a class="row" href="#m-' + esc(m.id) + '"><div class="nm">' + hl(m.name, q) + '</div><div class="sub">'
     + pty(m.party) + (m.district ? ' ' + hl(m.district, q) : '') + (roomOf(m.office) ? (m.district ? ' · ' : ' ') + esc(roomOf(m.office)) : '') + '</div>'
-    + (badges ? '<div class="badges">' + badges + '</div>' : '') + knowersLine(key) + memoLine(key) + '</a>';
+    + (badges ? '<div class="badges">' + badges + '</div>' : '') + knowersLine(key) + memoLine(key) + '</a></div>';
 }
 function staffRow(e, q) {
-  return '<a class="row" href="#m-' + esc(e.m.id) + '"><div class="staffrow"><span class="nm">' + hl(e.name, q) + '</span><span class="chip role">' + esc(e.role) + '</span>'
+  return '<div class="rowwrap">' + rowStar(e.key) + '<a class="row" href="#m-' + esc(e.m.id) + '"><div class="staffrow"><span class="nm">' + hl(e.name, q) + '</span><span class="chip role ' + (ROLE_CLS[e.role] || '') + '">' + esc(e.role) + '</span>'
     + knownBadge(e.key) + '</div><div class="sub">' + esc(e.m.name) + ' 의원실' + (e.m.party ? ' · ' + pty(e.m.party) : '') + '</div>'
-    + knowersLine(e.key) + memoLine(e.key) + '</a>';
+    + knowersLine(e.key) + memoLine(e.key) + '</a></div>';
 }
 const byParty = (m) => (!party || m.party === party) && (!committee || m.committees.indexOf(committee) >= 0);
 // '의원회관 341호' → '341호' (호수를 못 찾으면 사무실 정보를 그대로)
@@ -368,7 +413,7 @@ function renderMember(m, keep) {
         + (my ? '<input class="memo" data-memo="' + esc(key) + '" maxlength="200" placeholder="내 메모 (나에게만 보임)" value="' + esc(myMemos[key] || '') + '" aria-label="' + esc(n) + ' 메모">' : '')
         + '</div>';
     }).join('') + '</div>' : '<p class="empty">등록된 인원이 없습니다.</p>';
-    return '<section class="sec"><h4>' + r + ' <span class="count">' + list.length + '명</span></h4>' + body + '</section>';
+    return '<section class="sec"><h4><span class="chip role ' + ROLE_CLS[r] + '">' + r + '</span> <span class="count">' + list.length + '명</span></h4>' + body + '</section>';
   }).join('');
   const cm = m.committees.length ? '<div class="chips">' + m.committees.map((c) => '<span class="chip">' + esc(c) + '</span>').join('') + '</div>' : '<p class="empty">등록된 위원회가 없습니다.</p>';
   const teamKnow = mode === 'team' && isKnown(mk) ? '<p class="hint" style="margin:6px 0 0">이 의원을 아는 팀원: ' + esc(knowerNames(mk).join(', ')) + '</p>' : '';
@@ -522,7 +567,7 @@ $('#view').addEventListener('change', (e) => { if (e.target.id === 'chgKnown') {
 $('#view').addEventListener('click', (e) => {
   const kb = e.target.closest('[data-known]');
   if (kb) {
-    const key = kb.getAttribute('data-known'); toggleMine(key); render(true);
+    e.preventDefault(); const key = kb.getAttribute('data-known'); toggleMine(key); render(true);
     if (myMarks.has(key)) {
       const inp = document.querySelector('.memo[data-memo="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
       if (inp) inp.focus({ preventScroll: true });
@@ -540,6 +585,7 @@ window.addEventListener('hashchange', () => render());
 (async function init() {
   useLocalCache(); rebuildKmap(); applyModeUi(); renderAuth();
   await loadData();
+  { const ops = planMoves(myMarks); if (ops.length) { applyMoves(ops, myMarks, myMemos); cacheWrite(); rebuildKmap(); } }
   if (mode === 'team') mode = 'personal'; // 로그인 확인 전에는 개인 모드로 시작
   applyModeUi(); render();
   if (CFG.SUPABASE_URL && CFG.SUPABASE_ANON_KEY && window.supabase && window.supabase.createClient) {
