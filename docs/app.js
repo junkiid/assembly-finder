@@ -10,6 +10,9 @@ const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const CFG = window.APP_CONFIG || {};
 const ROLES = ['보좌관', '비서관', '비서'];
+// 화면에 보여 줄 때만 직급 이름을 바꾼다. 국회 API 원본 데이터(데이터 파일)는 그대로 둔다.
+const ROLE_LABEL = { '비서관': '선임비서관', '비서': '비서관' };
+const rl = (r) => ROLE_LABEL[r] || r;
 const ROLE_CLS = { '보좌관': 'r-aide', '비서관': 'r-sec', '비서': 'r-asst' };
 const PARTY_CLS = { '더불어민주당': 'pty-dp', '국민의힘': 'pty-ppp', '조국혁신당': 'pty-rk', '개혁신당': 'pty-rf' };
 const pty = (p) => (p ? '<span class="pty ' + (PARTY_CLS[p] || '') + '">' + esc(p) + '</span>' : '');
@@ -361,7 +364,7 @@ function memberRow(m, q) {
     + (badges ? '<div class="badges">' + badges + '</div>' : '') + knowersLine(key) + memoLine(key) + '</a></div>';
 }
 function staffRow(e, q) {
-  return '<div class="rowwrap">' + rowStar(e.key) + '<a class="row" href="#m-' + esc(e.m.id) + '"><div class="staffrow"><span class="nm">' + hl(e.name, q) + '</span><span class="chip role ' + (ROLE_CLS[e.role] || '') + '">' + esc(e.role) + '</span>'
+  return '<div class="rowwrap">' + rowStar(e.key) + '<a class="row" href="#m-' + esc(e.m.id) + '"><div class="staffrow"><span class="nm">' + hl(e.name, q) + '</span><span class="chip role ' + (ROLE_CLS[e.role] || '') + '">' + esc(rl(e.role)) + '</span>'
     + knownBadge(e.key) + '</div><div class="sub">' + esc(e.m.name) + ' 의원실' + (e.m.party ? ' · ' + pty(e.m.party) : '') + '</div>'
     + knowersLine(e.key) + memoLine(e.key) + '</a></div>';
 }
@@ -413,7 +416,7 @@ function renderMember(m, keep) {
         + (my ? '<input class="memo" data-memo="' + esc(key) + '" maxlength="200" placeholder="내 메모 (나에게만 보임)" value="' + esc(myMemos[key] || '') + '" aria-label="' + esc(n) + ' 메모">' : '')
         + '</div>';
     }).join('') + '</div>' : '<p class="empty">등록된 인원이 없습니다.</p>';
-    return '<section class="sec"><h4><span class="chip role ' + ROLE_CLS[r] + '">' + r + '</span> <span class="count">' + list.length + '명</span></h4>' + body + '</section>';
+    return '<section class="sec"><h4><span class="chip role ' + ROLE_CLS[r] + '">' + rl(r) + '</span> <span class="count">' + list.length + '명</span></h4>' + body + '</section>';
   }).join('');
   const cm = m.committees.length ? '<div class="chips">' + m.committees.map((c) => '<span class="chip">' + esc(c) + '</span>').join('') + '</div>' : '<p class="empty">등록된 위원회가 없습니다.</p>';
   const teamKnow = mode === 'team' && isKnown(mk) ? '<p class="hint" style="margin:6px 0 0">이 의원을 아는 팀원: ' + esc(knowerNames(mk).join(', ')) + '</p>' : '';
@@ -453,10 +456,10 @@ function evView(e) {
     }
     case 'committee_added': return ['＋ 추가', memberLink(e.code, e.name) + ' 의원 소속 위원회에 ' + esc(e.committee) + ' 추가'];
     case 'committee_removed': return ['－ 제외', memberLink(e.code, e.name) + ' 의원 소속 위원회에서 ' + esc(e.committee) + ' 제외'];
-    case 'staff_added': return ['＋ 추가', '<b>' + esc(e.person) + '</b> (' + esc(e.role) + ') — ' + room(e.code, e.name) + '에 추가'];
-    case 'staff_removed': return ['－ 제외', '<b>' + esc(e.person) + '</b> (' + esc(e.role) + ') — ' + room(e.code, e.name) + '에서 제외'];
-    case 'staff_moved': return ['→ 이동', '<b>' + esc(e.person) + '</b>: ' + room(e.from.code, e.from.name) + ' (' + esc(e.from.role) + ') → ' + room(e.to.code, e.to.name) + ' (' + esc(e.to.role) + ')'];
-    case 'staff_role_changed': return ['↻ 변경', '<b>' + esc(e.person) + '</b> — ' + room(e.code, e.name) + ' ' + esc(e.from_role) + ' → ' + esc(e.to_role)];
+    case 'staff_added': return ['＋ 추가', '<b>' + esc(e.person) + '</b> (' + esc(rl(e.role)) + ') — ' + room(e.code, e.name) + '에 추가'];
+    case 'staff_removed': return ['－ 제외', '<b>' + esc(e.person) + '</b> (' + esc(rl(e.role)) + ') — ' + room(e.code, e.name) + '에서 제외'];
+    case 'staff_moved': return ['→ 이동', '<b>' + esc(e.person) + '</b>: ' + room(e.from.code, e.from.name) + ' (' + esc(rl(e.from.role)) + ') → ' + room(e.to.code, e.to.name) + ' (' + esc(rl(e.to.role)) + ')'];
+    case 'staff_role_changed': return ['↻ 변경', '<b>' + esc(e.person) + '</b> — ' + room(e.code, e.name) + ' ' + esc(rl(e.from_role)) + ' → ' + esc(rl(e.to_role))];
     default: return ['변경', esc(JSON.stringify(e))];
   }
 }
